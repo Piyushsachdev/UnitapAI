@@ -1,5 +1,6 @@
 const API_BASE =
-  (import.meta.env.VITE_API_BASE as string | undefined) || "";
+  (import.meta.env.VITE_API_BASE as string | undefined) ||
+  "http://localhost:8787";
 
 export interface ApiError {
   error: string;

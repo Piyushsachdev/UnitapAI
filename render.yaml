@@ -4,11 +4,11 @@ databases:
 
 services:
   - type: web
-    name: unitap-ai
+    name: unitap-backend
     env: node
     plan: free
-    buildCommand: npm run build
-    startCommand: npm start
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
         value: production
