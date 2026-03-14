@@ -21,18 +21,19 @@ const app = express();
 app.use(
   cors({
     origin(origin, cb) {
-      // Allow non-browser clients (no Origin header)
       if (!origin) return cb(null, true);
 
-      // If explicitly configured, enforce it (useful for production)
-      if (CORS_ORIGIN) return cb(null, origin === CORS_ORIGIN);
+      // Robust CORS check: allow exact match or match without trailing slash
+      if (CORS_ORIGIN) {
+        const cleanOrigin = origin.replace(/\/$/, "");
+        const cleanAllowed = CORS_ORIGIN.replace(/\/$/, "");
+        if (cleanOrigin === cleanAllowed) return cb(null, true);
+      }
 
-      // Dev default: allow localhost on any port (Vite may switch ports)
+      // Dev default: allow localhost
       try {
         const u = new URL(origin);
-        const isLocal =
-          u.hostname === "localhost" || u.hostname === "127.0.0.1";
-        return cb(null, isLocal);
+        return cb(null, u.hostname === "localhost" || u.hostname === "127.0.0.1");
       } catch {
         return cb(null, false);
       }
