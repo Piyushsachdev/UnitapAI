@@ -1,10 +1,11 @@
 require("dotenv").config();
 
+const path = require("node:path");
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 
-const { db } = require("./db");
+const { db, init: initDb } = require("./db");
 const { id, nowMs, pickEmail, pickPhone, pickWebsite } = require("./utils");
 const { ocrSpaceBusinessCard } = require("./providers/ocrSpace");
 const { hfTranscribeAudio, hfSummarize, hfActionItems } = require("./providers/huggingFace");
@@ -50,7 +51,7 @@ app.get("/health", (_req, res) => {
 });
 
 // Profiles (MVP)
-app.post("/api/profiles", (req, res) => {
+app.post("/api/profiles", async (req, res) => {
   const p = req.body || {};
   if (!p.username || !p.fullName || !p.email || !p.phone) {
     return res.status(400).json({ error: "Missing required fields" });
@@ -69,22 +70,25 @@ app.post("/api/profiles", (req, res) => {
   };
 
   try {
-    db.prepare(
+    await db.run(
       `INSERT INTO profiles (id, created_at, username, full_name, email, phone, organization, job_title, bio)
-       VALUES (@id, @created_at, @username, @full_name, @email, @phone, @organization, @job_title, @bio)`
-    ).run(record);
+       VALUES (@id, @created_at, @username, @full_name, @email, @phone, @organization, @job_title, @bio)`,
+      record
+    );
     res.json({ profile: record });
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) });
   }
 });
 
-app.get("/api/profiles/:username", (req, res) => {
-  const row = db
-    .prepare("SELECT * FROM profiles WHERE username = ?")
-    .get(req.params.username);
-  if (!row) return res.status(404).json({ error: "Not found" });
-  res.json({ profile: row });
+app.get("/api/profiles/:username", async (req, res) => {
+  try {
+    const row = await db.get("SELECT * FROM profiles WHERE username = ?", [req.params.username]);
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json({ profile: row });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
 // OCR Scan (business card)
@@ -131,12 +135,13 @@ app.post("/api/scans/business-card", upload.single("image"), async (req, res) =>
       extra_json: JSON.stringify({ provider: "ocr_space", providerResponse }, null, 0)
     };
 
-    db.prepare(
+    await db.run(
       `INSERT INTO scans
        (id, created_at, source, raw_text, name, job_title, company, phone, email, website, address, extra_json)
        VALUES
-       (@id, @created_at, @source, @raw_text, @name, @job_title, @company, @phone, @email, @website, @address, @extra_json)`
-    ).run(scan);
+       (@id, @created_at, @source, @raw_text, @name, @job_title, @company, @phone, @email, @website, @address, @extra_json)`,
+      scan
+    );
 
     try {
       await appendScanRow(EXPORT_XLSX_PATH, scan);
@@ -151,11 +156,13 @@ app.post("/api/scans/business-card", upload.single("image"), async (req, res) =>
   }
 });
 
-app.get("/api/scans", (_req, res) => {
-  const rows = db
-    .prepare("SELECT * FROM scans ORDER BY created_at DESC LIMIT 200")
-    .all();
-  res.json({ scans: rows });
+app.get("/api/scans", async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM scans ORDER BY created_at DESC LIMIT 200");
+    res.json({ scans: rows });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
 app.patch("/api/scans/:id", async (req, res) => {
@@ -163,7 +170,7 @@ app.patch("/api/scans/:id", async (req, res) => {
   const p = req.body || {};
 
   try {
-    const existing = db.prepare("SELECT * FROM scans WHERE id = ?").get(id);
+    const existing = await db.get("SELECT * FROM scans WHERE id = ?", [id]);
     if (!existing) return res.status(404).json({ error: "Scan not found" });
 
     const updated = {
@@ -177,7 +184,7 @@ app.patch("/api/scans/:id", async (req, res) => {
       raw_text: p.raw_text !== undefined ? String(p.raw_text) : existing.raw_text
     };
 
-    db.prepare(
+    await db.run(
       `UPDATE scans SET
        name = @name,
        job_title = @job_title,
@@ -186,8 +193,9 @@ app.patch("/api/scans/:id", async (req, res) => {
        phone = @phone,
        website = @website,
        raw_text = @raw_text
-       WHERE id = @id`
-    ).run(updated);
+       WHERE id = @id`,
+      updated
+    );
 
     // Also update Excel with the new details
     try {
@@ -247,10 +255,11 @@ app.post("/api/meetings", upload.single("audio"), async (req, res) => {
       action_items_json: JSON.stringify(actionItems)
     };
 
-    db.prepare(
+    await db.run(
       `INSERT INTO meetings (id, created_at, title, transcript, summary, action_items_json)
-       VALUES (@id, @created_at, @title, @transcript, @summary, @action_items_json)`
-    ).run(meeting);
+       VALUES (@id, @created_at, @title, @transcript, @summary, @action_items_json)`,
+      meeting
+    );
 
     res.json({
       meeting: {
@@ -263,19 +272,36 @@ app.post("/api/meetings", upload.single("audio"), async (req, res) => {
   }
 });
 
-app.get("/api/meetings", (_req, res) => {
-  const rows = db
-    .prepare("SELECT * FROM meetings ORDER BY created_at DESC LIMIT 100")
-    .all()
-    .map((r) => ({
+app.get("/api/meetings", async (_req, res) => {
+  try {
+    const rows = await db.all("SELECT * FROM meetings ORDER BY created_at DESC LIMIT 100");
+    const formatted = rows.map((r) => ({
       ...r,
       action_items: JSON.parse(r.action_items_json || "[]")
     }));
-  res.json({ meetings: rows });
+    res.json({ meetings: formatted });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  // eslint-disable-next-line no-console
-  console.log(`UNITAP backend running on http://0.0.0.0:${PORT}`);
+// Serve frontend in production
+if (process.env.NODE_ENV === "production") {
+  const distPath = path.join(__dirname, "../frontend/dist");
+  app.use(express.static(distPath));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+}
+
+// Initialize DB and start server
+initDb().then(() => {
+  app.listen(PORT, "0.0.0.0", () => {
+    // eslint-disable-next-line no-console
+    console.log(`UNITAP backend running on http://0.0.0.0:${PORT}`);
+  });
+}).catch(err => {
+  console.error("Failed to initialize database:", err);
+  process.exit(1);
 });
 
