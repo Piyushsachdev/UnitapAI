@@ -1,8 +1,8 @@
 [build]
   base = "frontend"
-  command = "npm install && npm run build"
+  command = "npm install && node node_modules/vite/bin/vite.js build"
   publish = "dist"
-  environment = { NODE_VERSION = "20", NPM_FLAGS = "--version" }
+  environment = { NODE_VERSION = "20" }
 
 [build.processing]
   skip_processing = false
