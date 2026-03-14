@@ -285,15 +285,6 @@ app.get("/api/meetings", async (_req, res) => {
   }
 });
 
-// Serve frontend in production
-if (process.env.NODE_ENV === "production") {
-  const distPath = path.join(__dirname, "../frontend/dist");
-  app.use(express.static(distPath));
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(distPath, "index.html"));
-  });
-}
-
 // Initialize DB and start server
 initDb().then(() => {
   app.listen(PORT, "0.0.0.0", () => {
