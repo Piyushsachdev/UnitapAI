@@ -1,7 +1,11 @@
 [build]
   base = "frontend"
-  command = "npm run build"
+  command = "npm install && npm run build"
   publish = "dist"
+  environment = { NODE_VERSION = "20", NPM_FLAGS = "--version" }
+
+[build.processing]
+  skip_processing = false
 
 [[redirects]]
   from = "/*"
